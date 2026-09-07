@@ -1,0 +1,9 @@
+# Byte-order mark and generated files
+*.DS_Store
+Thumbs.db
+.vscode/
+node_modules/
+
+# Keep Code.gs out of GitHub (sensitive)
+# Uncomment if you don't want to push GAS code:
+# Code.gs
