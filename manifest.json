@@ -1,0 +1,44 @@
+{
+  "name": "AttendX — QR Attendance",
+  "short_name": "AttendX",
+  "description": "QR-based student attendance system for teachers. Scan student ID cards to mark attendance instantly.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e1a",
+  "theme_color": "#6c63ff",
+  "lang": "en",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "New Session",
+      "short_name": "Scan",
+      "description": "Start a new attendance session",
+      "url": "./index.html#scan",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "QR Generator",
+      "short_name": "Print",
+      "description": "Generate QR cards for students",
+      "url": "./index.html#qrgen",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
