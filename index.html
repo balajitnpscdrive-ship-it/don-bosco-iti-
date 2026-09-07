@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>AttendX — QR Attendance System</title>
+  <meta name="description" content="QR-based student attendance system. Scan student ID cards to mark attendance instantly." />
+  <meta name="theme-color" content="#6c63ff" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="AttendX" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a; --bg2: #0f1528; --bg3: #141b35;
+      --card: rgba(255,255,255,0.04);
+      --card-border: rgba(255,255,255,0.08);
+      --glass: rgba(255,255,255,0.06);
+      --glass-border: rgba(255,255,255,0.12);
+      --accent: #6c63ff; --accent2: #a78bfa; --accent3: #38bdf8;
+      --green: #22d3a5; --red: #ff6b6b; --yellow: #fbbf24;
+      --text: #f0f4ff; --text2: #94a3c4; --text3: #5a6a8a;
+      --radius: 16px; --radius-sm: 10px;
+      --shadow: 0 8px 32px rgba(0,0,0,0.4);
+      --transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html { scroll-behavior: smooth; height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; overflow-x: hidden;
+    }
+    body::before, body::after {
+      content: ''; position: fixed; border-radius: 50%;
+      pointer-events: none; z-index: 0;
+    }
+    body::before {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
+      top: -200px; left: -200px;
+    }
+    body::after {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(56,189,248,0.08) 0%, transparent 70%);
+      bottom: -150px; right: -150px;
+    }
+    #app { position: relative; z-index: 1; min-height: 100vh; }
+
+    /* ── NAVBAR ─────────────────────────────────── */
+    .navbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 20px; padding-top: calc(12px + var(--safe-top));
+      background: rgba(10,14,26,0.92);
+      backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky; top: 0; z-index: 100;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .navbar-brand { display: flex; align-items: center; gap: 10px; cursor: pointer; text-decoration: none; }
+    .navbar-logo-img {
+      width: 38px; height: 38px; border-radius: 10px;
+      object-fit: cover;
+      box-shadow: 0 0 16px rgba(108,99,255,0.5);
+    }
+    .navbar-logo-fallback {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; box-shadow: 0 0 16px rgba(108,99,255,0.5);
+    }
+    .navbar-text {}
+    .navbar-title {
+      font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent2), var(--accent3));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+    }
+    .navbar-subtitle { font-size: 10px; color: var(--text3); }
+    .navbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .nav-tab {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 13px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1px solid transparent; transition: var(--transition);
+      color: var(--text2); background: transparent;
+    }
+    .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    .nav-tab.active { color: var(--accent2); background: rgba(108,99,255,0.12); border-color: rgba(108,99,255,0.3); }
+
+    .session-badge {
+      display: none; align-items: center; gap: 6px;
+      background: rgba(34,211,165,0.12); border: 1px solid rgba(34,211,165,0.3);
+      padding: 5px 10px; border-radius: 20px;
+      font-size: 11px; color: var(--green); font-weight: 600;
+    }
+    .session-badge.active { display: flex; }
+
+    /* Online/offline pill */
+    .online-pill {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 600;
+      border: 1px solid;
+    }
+    .online-pill.online { background: rgba(34,211,165,0.1); border-color: rgba(34,211,165,0.3); color: var(--green); }
+    .online-pill.offline { background: rgba(255,107,107,0.1); border-color: rgba(255,107,107,0.3); color: var(--red); }
+
+    .icon-btn {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; cursor: pointer; transition: var(--transition);
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.1); border-color: var(--accent); }
+
+    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+    /* ── VIEWS ──────────────────────────────────── */
+    .view { display: none; padding: 20px; max-width: 1000px; margin: 0 auto; padding-bottom: calc(20px + var(--safe-bottom)); }
+    .view.active { display: block; }
+
+    /* ── PWA INSTALL BANNER ─────────────────────── */
+    .install-banner {
+      display: none;
+      margin: 16px 20px 0;
+      max-width: 1000px; margin-left: auto; margin-right: auto;
+      background: linear-gradient(135deg, rgba(108,99,255,0.15), rgba(56,189,248,0.1));
+      border: 1px solid rgba(108,99,255,0.3);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      align-items: center; gap: 12px;
+      font-size: 13px; color: var(--text2);
+    }
+    .install-banner.visible { display: flex; }
+    .install-banner-icon { font-size: 24px; flex-shrink: 0; }
+    .install-banner-text { flex: 1; }
+    .install-banner-text strong { color: var(--text); display: block; }
+
+    /* ── GAS STATUS BAR ─────────────────────────── */
+    .gas-status-bar {
+      max-width: 1000px; margin: 0 auto;
+      padding: 8px 20px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px;
+    }
+    .gas-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .gas-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .gas-dot.disconnected { background: var(--text3); }
+    .gas-dot.checking { background: var(--yellow); animation: pulse 1s infinite; }
+    .gas-label { color: var(--text3); }
+    .gas-url-short { color: var(--text2); font-family: monospace; font-size: 11px; }
+    .gas-config-btn {
+      margin-left: auto; font-size: 11px; color: var(--accent2);
+      cursor: pointer; text-decoration: underline;
+    }
+
+    /* ── COMMON COMPONENTS ──────────────────────── */
+    .hero { text-align: center; padding: 40px 20px 28px; }
+    .hero-icon {
+      width: 72px; height: 72px; background: linear-gradient(135deg, var(--accent), var(--accent3));
+      border-radius: 20px; display: flex; align-items: center; justify-content: center;
+      font-size: 32px; margin: 0 auto 16px; box-shadow: 0 0 36px rgba(108,99,255,0.4);
+    }
+    .hero h1 {
+      font-family: 'Outfit', sans-serif; font-size: 28px; font-weight: 800;
+      background: linear-gradient(135deg, var(--text), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px;
+    }
+    .hero p { color: var(--text2); font-size: 14px; }
+
+    .card {
+      background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 20px;
+      backdrop-filter: blur(10px); transition: var(--transition);
+    }
+    .card:hover { border-color: rgba(255,255,255,0.12); }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700;
+      color: var(--text); margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block; }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; background: rgba(255,255,255,0.05);
+      border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+      padding: 11px 13px; color: var(--text); font-size: 14px;
+      font-family: 'Inter', sans-serif; transition: var(--transition); outline: none;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--accent); background: rgba(108,99,255,0.08);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+    }
+    .form-textarea { resize: vertical; min-height: 100px; line-height: 1.5; }
+    .form-select option { background: var(--bg2); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 7px; padding: 12px 22px; border-radius: var(--radius-sm); border: none;
+      font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: var(--transition); user-select: none;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #8b5cf6); color: #fff; box-shadow: 0 4px 18px rgba(108,99,255,0.35); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 26px rgba(108,99,255,0.5); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-success { background: linear-gradient(135deg, #22d3a5, #059669); color: #fff; box-shadow: 0 4px 18px rgba(34,211,165,0.3); }
+    .btn-success:hover { transform: translateY(-2px); }
+    .btn-danger { background: linear-gradient(135deg, #ff6b6b, #ef4444); color: #fff; box-shadow: 0 4px 18px rgba(255,107,107,0.3); }
+    .btn-danger:hover { transform: translateY(-2px); }
+    .btn-warning { background: linear-gradient(135deg, #fbbf24, #d97706); color: #000; box-shadow: 0 4px 18px rgba(251,191,36,0.3); }
+    .btn-warning:hover { transform: translateY(-2px); }
+    .btn-outline { background: transparent; border: 1px solid var(--card-border); color: var(--text2); }
+    .btn-outline:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(108,99,255,0.08); }
+    .btn-sm { padding: 7px 14px; font-size: 12px; }
+    .btn-full { width: 100%; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+    .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 18px; }
+    .stat-card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 14px; text-align: center; }
+    .stat-number { font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; background: linear-gradient(135deg, var(--accent2), var(--accent3)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .stat-label { font-size: 10px; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .history-list { display: flex; flex-direction: column; gap: 8px; }
+    .history-item {
+      background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm); padding: 12px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      transition: var(--transition); cursor: pointer;
+    }
+    .history-item:hover { border-color: var(--accent); background: rgba(108,99,255,0.06); }
+    .history-subject { font-size: 13px; font-weight: 600; color: var(--text); }
+    .history-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .history-count { background: rgba(108,99,255,0.15); border: 1px solid rgba(108,99,255,0.3); color: var(--accent2); padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .history-source { font-size: 9px; padding: 2px 6px; border-radius: 6px; margin-left: 6px; }
+    .hs-cloud { background: rgba(56,189,248,0.15); color: var(--accent3); border: 1px solid rgba(56,189,248,0.3); }
+    .hs-local { background: rgba(148,163,196,0.12); color: var(--text3); border: 1px solid rgba(148,163,196,0.2); }
+
+    .empty-state { text-align: center; padding: 28px; color: var(--text3); }
+    .empty-state .empty-icon { font-size: 36px; margin-bottom: 8px; }
+
+    /* ── SCANNER VIEW ───────────────────────────── */
+    .scanner-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .scanner-session-info { flex: 1; min-width: 0; }
+    .scanner-session-name { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scanner-session-meta { font-size: 11px; color: var(--text3); }
+
+    .scanner-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+
+    .scanner-box { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); overflow: hidden; position: relative; }
+    .scanner-box-header { padding: 12px 14px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; justify-content: space-between; }
+    .scanner-box-title { font-size: 13px; font-weight: 600; color: var(--text2); }
+    .scanner-status { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
+    .scanner-status.scanning { color: var(--green); }
+
+    #qr-reader { width: 100%; background: #000; }
+    #qr-reader video { width: 100% !important; }
+    #qr-reader img, #qr-reader__dashboard, #qr-reader__header_message { display: none !important; }
+
+    .scan-overlay {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 160px; height: 160px; border: 2px solid rgba(108,99,255,0.5);
+      border-radius: 14px; pointer-events: none;
+    }
+    .scan-overlay::before,.scan-overlay::after { content:''; position:absolute; width:28px; height:28px; border-color:var(--accent); border-style:solid; }
+    .scan-overlay::before { top:-2px; left:-2px; border-width:3px 0 0 3px; border-radius:4px 0 0 0; }
+    .scan-overlay::after { bottom:-2px; right:-2px; border-width:0 3px 3px 0; border-radius:0 0 4px 0; }
+    .scan-line { position:absolute; width:calc(100% - 4px); height:2px; background:linear-gradient(90deg,transparent,var(--accent),transparent); left:2px; animation:scanMove 2s linear infinite; }
+    @keyframes scanMove { 0%{top:4px} 100%{top:calc(100% - 6px)} }
+
+    .last-scan-card { padding:12px 14px; background:rgba(34,211,165,0.08); border:1px solid rgba(34,211,165,0.2); border-radius:var(--radius-sm); display:none; margin-top:10px; }
+    .last-scan-card.show { display:block; animation:slideIn .3s ease; }
+    .last-scan-card.duplicate { background:rgba(251,191,36,0.08); border-color:rgba(251,191,36,0.3); }
+    .last-scan-card.error { background:rgba(255,107,107,0.08); border-color:rgba(255,107,107,0.3); }
+    @keyframes slideIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+    .last-scan-name { font-size:15px; font-weight:700; color:var(--text); }
+    .last-scan-meta { font-size:11px; color:var(--text2); }
+    .last-scan-status { font-size:11px; font-weight:600; margin-top:5px; }
+    .last-scan-status.ok { color:var(--green); }
+    .last-scan-status.dup { color:var(--yellow); }
+    .last-scan-status.err { color:var(--red); }
+
+    .attendance-panel { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); overflow:hidden; }
+    .attendance-panel-header { padding:12px 14px; border-bottom:1px solid var(--card-border); display:flex; align-items:center; justify-content:space-between; }
+    .att-count-badge { background:linear-gradient(135deg,var(--accent),var(--accent3)); color:#fff; padding:2px 9px; border-radius:10px; font-size:11px; font-weight:700; }
+    .attendance-list { max-height:380px; overflow-y:auto; padding:6px; }
+    .attendance-list::-webkit-scrollbar { width:3px; }
+    .attendance-list::-webkit-scrollbar-thumb { background:var(--card-border); border-radius:2px; }
+    .attendance-item { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:9px; transition:var(--transition); animation:itemSlide .3s ease; }
+    @keyframes itemSlide { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+    .attendance-item:hover { background:rgba(255,255,255,0.04); }
+    .att-avatar { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#fff; flex-shrink:0; }
+    .att-info { flex:1; min-width:0; }
+    .att-name { font-size:13px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .att-sub { font-size:10px; color:var(--text3); }
+    .att-time { font-size:10px; color:var(--text3); flex-shrink:0; }
+    .house-badge { padding:2px 7px; border-radius:5px; font-size:9px; font-weight:700; text-transform:uppercase; flex-shrink:0; }
+    .scanner-actions { display:flex; gap:8px; margin-top:14px; }
+
+    /* Sync indicator */
+    .sync-badge {
+      display:inline-flex; align-items:center; gap:4px;
+      font-size:10px; padding:2px 8px; border-radius:8px;
+    }
+    .sync-ok { background:rgba(34,211,165,0.1); color:var(--green); }
+    .sync-pending { background:rgba(251,191,36,0.1); color:var(--yellow); animation:pulse 1.5s infinite; }
+    .sync-offline { background:rgba(148,163,196,0.1); color:var(--text3); }
+
+    /* ── REPORT VIEW ────────────────────────────── */
+    .report-header { background:linear-gradient(135deg,rgba(108,99,255,0.15),rgba(56,189,248,0.1)); border:1px solid rgba(108,99,255,0.2); border-radius:var(--radius); padding:20px; margin-bottom:16px; text-align:center; }
+    .report-title { font-family:'Outfit',sans-serif; font-size:22px; font-weight:800; color:var(--text); }
+    .report-meta { font-size:12px; color:var(--text2); margin-top:4px; }
+    .report-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+    .report-stat { background:rgba(255,255,255,0.05); border-radius:var(--radius-sm); padding:12px; }
+    .report-stat-num { font-family:'Outfit',sans-serif; font-size:24px; font-weight:800; }
+    .report-stat-num.green { color:var(--green); }
+    .report-stat-num.accent { background:linear-gradient(135deg,var(--accent2),var(--accent3)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+    .report-stat-label { font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.4px; }
+    .report-table-wrap { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); overflow:hidden; margin-bottom:16px; overflow-x:auto; }
+    .report-table { width:100%; border-collapse:collapse; min-width:400px; }
+    .report-table th { padding:10px 14px; text-align:left; font-size:10px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.5px; background:rgba(255,255,255,0.03); border-bottom:1px solid var(--card-border); }
+    .report-table td { padding:10px 14px; font-size:12px; color:var(--text); border-bottom:1px solid rgba(255,255,255,0.04); }
+    .report-table tr:last-child td { border-bottom:none; }
+    .report-table tr:hover td { background:rgba(255,255,255,0.03); }
+    .report-actions { display:flex; gap:10px; flex-wrap:wrap; }
+
+    /* ── QR GENERATOR VIEW ──────────────────────── */
+    .qrgen-layout { display:grid; grid-template-columns:340px 1fr; gap:20px; align-items:start; }
+    .input-panel { display:flex; flex-direction:column; gap:14px; }
+
+    .info-box { background:rgba(56,189,248,0.07); border:1px solid rgba(56,189,248,0.2); border-radius:var(--radius-sm); padding:12px; font-size:12px; color:var(--text2); line-height:1.5; }
+    .info-box code { background:rgba(255,255,255,0.1); padding:1px 5px; border-radius:4px; font-family:'Courier New',monospace; color:var(--accent3); font-size:11px; }
+
+    .student-tag-list { display:flex; flex-wrap:wrap; gap:5px; max-height:160px; overflow-y:auto; padding:8px; background:rgba(255,255,255,0.03); border:1px solid var(--card-border); border-radius:var(--radius-sm); min-height:44px; }
+    .student-tag { display:inline-flex; align-items:center; gap:5px; background:rgba(108,99,255,0.15); border:1px solid rgba(108,99,255,0.3); padding:3px 9px; border-radius:16px; font-size:11px; color:var(--accent2); font-weight:500; }
+    .student-tag button { background:none; border:none; cursor:pointer; color:var(--text3); font-size:13px; line-height:1; padding:0; }
+    .student-tag button:hover { color:var(--red); }
+
+    .qr-settings { display:flex; flex-direction:column; gap:10px; }
+    .setting-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .setting-label { font-size:12px; color:var(--text2); font-weight:500; }
+    .setting-control { display:flex; gap:5px; }
+    .size-btn { padding:4px 10px; border-radius:6px; border:1px solid var(--card-border); background:transparent; color:var(--text2); font-size:11px; cursor:pointer; transition:var(--transition); }
+    .size-btn.active { background:rgba(108,99,255,0.2); border-color:var(--accent); color:var(--accent2); }
+    .size-btn:hover { border-color:var(--accent2); color:var(--accent2); }
+
+    .preview-panel { background:var(--card); border:1px solid var(--card-border); border-radius:var(--radius); overflow:hidden; }
+    .preview-header { padding:12px 16px; border-bottom:1px solid var(--card-border); display:flex; align-items:center; justify-content:space-between; }
+    .preview-header-title { font-size:13px; font-weight:600; color:var(--text2); display:flex; align-items:center; gap:8px; }
+
+    .qr-preview-grid { padding:16px; display:grid; gap:12px; min-height:180px; }
+    .qr-preview-grid.cols-2 { grid-template-columns:repeat(2,1fr); }
+    .qr-preview-grid.cols-3 { grid-template-columns:repeat(3,1fr); }
+    .qr-preview-grid.cols-4 { grid-template-columns:repeat(4,1fr); }
+
+    .qr-screen-card { background:rgba(255,255,255,0.04); border:1px solid var(--card-border); border-radius:10px; padding:12px; display:flex; flex-direction:column; align-items:center; gap:8px; position:relative; cursor:pointer; transition:var(--transition); }
+    .qr-screen-card:hover { border-color:var(--accent); background:rgba(108,99,255,0.08); }
+    .qr-screen-card .qr-canvas-wrap { background:#fff; border-radius:7px; padding:8px; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 14px rgba(0,0,0,0.4); }
+    .qr-screen-card .qr-canvas-wrap canvas { display:block; }
+    .qr-screen-card .card-name { font-size:12px; font-weight:700; color:var(--text); text-align:center; word-break:break-word; }
+    .qr-screen-card .card-college { font-size:10px; color:var(--text2); text-align:center; }
+    .qr-screen-card .card-house { font-size:9px; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:8px; }
+    .qr-screen-card .delete-card-btn { position:absolute; top:5px; right:5px; background:rgba(255,107,107,0.12); border:none; width:20px; height:20px; border-radius:50%; color:var(--red); font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:0; transition:var(--transition); }
+    .qr-screen-card:hover .delete-card-btn { opacity:1; }
+    .qr-empty-preview { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:48px 20px; color:var(--text3); text-align:center; grid-column:1/-1; }
+
+    /* ── HOUSE COLORS ───────────────────────────── */
+    .house-red    { background:rgba(239,68,68,0.18);   color:#fca5a5; border:1px solid rgba(239,68,68,0.3);   }
+    .house-blue   { background:rgba(59,130,246,0.18);  color:#93c5fd; border:1px solid rgba(59,130,246,0.3);  }
+    .house-green  { background:rgba(34,197,94,0.18);   color:#86efac; border:1px solid rgba(34,197,94,0.3);   }
+    .house-yellow { background:rgba(234,179,8,0.18);   color:#fde047; border:1px solid rgba(234,179,8,0.3);   }
+    .house-purple { background:rgba(168,85,247,0.18);  color:#d8b4fe; border:1px solid rgba(168,85,247,0.3);  }
+    .house-orange { background:rgba(249,115,22,0.18);  color:#fdba74; border:1px solid rgba(249,115,22,0.3);  }
+    .house-default{ background:rgba(148,163,196,0.12); color:#94a3c4; border:1px solid rgba(148,163,196,0.2); }
+    .avatar-red    { background:linear-gradient(135deg,#ef4444,#b91c1c); }
+    .avatar-blue   { background:linear-gradient(135deg,#3b82f6,#1d4ed8); }
+    .avatar-green  { background:linear-gradient(135deg,#22c55e,#15803d); }
+    .avatar-yellow { background:linear-gradient(135deg,#eab308,#a16207); }
+    .avatar-purple { background:linear-gradient(135deg,#a855f7,#7e22ce); }
+    .avatar-orange { background:linear-gradient(135deg,#f97316,#c2410c); }
+    .avatar-default{ background:linear-gradient(135deg,var(--accent),#8b5cf6); }
+
+    /* Print house bg */
+    .ph-red    { background:#dc2626; } .ph-blue  { background:#2563eb; }
+    .ph-green  { background:#16a34a; } .ph-yellow{ background:#ca8a04; }
+    .ph-purple { background:#9333ea; } .ph-orange{ background:#ea580c; }
+    .ph-default{ background:#475569; }
+
+    /* ── TOAST ──────────────────────────────────── */
+    .toast-container { position:fixed; bottom:calc(24px + var(--safe-bottom)); right:24px; z-index:9999; display:flex; flex-direction:column; gap:7px; }
+    .toast { background:var(--bg3); border:1px solid var(--glass-border); backdrop-filter:blur(20px); border-radius:var(--radius-sm); padding:10px 14px; display:flex; align-items:center; gap:9px; font-size:12px; font-weight:500; color:var(--text); box-shadow:var(--shadow); animation:toastIn .3s ease; max-width:260px; }
+    @keyframes toastIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
+    .toast.fade-out { animation:toastOut .3s ease forwards; }
+    @keyframes toastOut { to{opacity:0;transform:translateX(16px)} }
+
+    /* ── MODAL ──────────────────────────────────── */
+    .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(10px); z-index:200; align-items:center; justify-content:center; padding:20px; }
+    .modal-overlay.open { display:flex; }
+    .modal { background:var(--bg2); border:1px solid var(--glass-border); border-radius:var(--radius); padding:24px; width:100%; max-width:460px; box-shadow:var(--shadow); animation:modalIn .3s cubic-bezier(.4,0,.2,1); max-height:90vh; overflow-y:auto; }
+    @keyframes modalIn { from{opacity:0;transform:scale(.95) translateY(-10px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    .modal-title { font-family:'Outfit',sans-serif; font-size:18px; font-weight:700; margin-bottom:18px; color:var(--text); }
+    .modal-actions { display:flex; gap:8px; margin-top:20px; justify-content:flex-end; }
+
+    /* ── PRINT STYLES ───────────────────────────── */
+    #print-area { display:none; }
+    @media print {
+      *{ -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+      body>*{ display:none!important; }
+      #print-area{ display:block!important; margin:0; padding:0; }
+      .print-page{ width:210mm; min-height:297mm; padding:7mm; page-break-after:always; background:white; }
+      .print-page:last-child{ page-break-after:auto; }
+      .print-page-header{ text-align:center; margin-bottom:4mm; padding-bottom:3mm; border-bottom:.5mm solid #333; }
+      .print-page-header h2{ font-family:Arial,sans-serif; font-size:13pt; font-weight:800; color:#111; margin:0; }
+      .print-page-header p{ font-family:Arial,sans-serif; font-size:7pt; color:#555; margin:1mm 0 0; }
+      .print-grid{ display:grid; gap:3mm; }
+      .print-grid.cols-2{ grid-template-columns:repeat(2,1fr); }
+      .print-grid.cols-3{ grid-template-columns:repeat(3,1fr); }
+      .print-grid.cols-4{ grid-template-columns:repeat(4,1fr); }
+      .print-card{ border:.5mm solid #222; border-radius:3mm; padding:3mm; background:white; display:flex; flex-direction:column; align-items:center; gap:1.5mm; break-inside:avoid; page-break-inside:avoid; font-family:Arial,sans-serif; }
+      .print-card-serial{ font-size:7pt; color:#888; align-self:flex-start; font-weight:600; }
+      .print-card-qr{ background:white; padding:2mm; border:.3mm solid #ddd; border-radius:2mm; display:flex; align-items:center; justify-content:center; }
+      .print-card-qr canvas,.print-card-qr img{ display:block; }
+      .print-card-name{ font-size:10pt; font-weight:800; color:#111; text-align:center; word-break:break-word; line-height:1.2; margin-top:1mm; }
+      .print-card-college{ font-size:7.5pt; color:#444; text-align:center; }
+      .print-card-house{ font-size:7pt; font-weight:700; text-transform:uppercase; letter-spacing:.3pt; color:#fff; padding:.5mm 2.5mm; border-radius:2mm; }
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────── */
+    @media (max-width:768px) {
+      .qrgen-layout,.scanner-layout { grid-template-columns:1fr; }
+      .form-row { grid-template-columns:1fr; }
+      .stats-row { grid-template-columns:1fr 1fr; }
+      .report-stats { grid-template-columns:1fr 1fr; }
+      .report-actions,.scanner-actions { flex-direction:column; }
+      .view { padding:14px; }
+      .hero { padding:28px 14px 20px; }
+      .navbar { padding:10px 14px; }
+    }
+    @media (max-width:400px) {
+      .stats-row { grid-template-columns:1fr 1fr; }
+      .navbar-title { font-size:17px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-brand" onclick="switchTab('home')">
+      <img src="icons/icon-192.png" alt="AttendX" class="navbar-logo-img"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+      <div class="navbar-logo-fallback" style="display:none">📋</div>
+      <div class="navbar-text">
+        <div class="navbar-title">AttendX</div>
+        <div class="navbar-subtitle">QR Attendance System</div>
+      </div>
+    </div>
+    <div class="navbar-right">
+      <div class="online-pill online" id="online-pill">
+        <div class="pulse-dot"></div> Online
+      </div>
+      <button class="nav-tab active" id="tab-home" onclick="switchTab('home')">🏠 Home</button>
+      <button class="nav-tab" id="tab-qrgen" onclick="switchTab('qrgen')">🖨️ QR Cards</button>
+      <div class="icon-btn" onclick="openSettings()" title="Settings">⚙️</div>
+      <div class="session-badge" id="active-session-badge">
+        <div class="pulse-dot"></div>
+        <span id="badge-text">Active</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- GAS STATUS BAR -->
+  <div class="gas-status-bar" id="gas-status-bar">
+    <div class="gas-dot disconnected" id="gas-dot"></div>
+    <span class="gas-label" id="gas-label">Google Sheets: Not connected</span>
+    <span class="gas-url-short" id="gas-url-short"></span>
+    <span class="gas-config-btn" onclick="openSettings()">Configure →</span>
+  </div>
+
+  <!-- PWA INSTALL BANNER -->
+  <div class="install-banner" id="install-banner">
+    <div class="install-banner-icon">📲</div>
+    <div class="install-banner-text">
+      <strong>Install AttendX</strong>
+      Add to your home screen for the best experience — works offline too!
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="installPWA()" id="install-btn">Install</button>
+    <button class="btn btn-outline btn-sm" onclick="dismissInstall()">✕</button>
+  </div>
+
+  <!-- ══ HOME VIEW ══════════════════════════════════ -->
+  <div class="view active" id="view-home">
+    <div class="hero">
+      <div class="hero-icon">📋</div>
+      <h1>QR Attendance System</h1>
+      <p>Scan student ID cards to mark attendance instantly</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-number" id="stat-total-sessions">0</div>
+        <div class="stat-label">Sessions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-total-scans">0</div>
+        <div class="stat-label">Total Scans</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="stat-today-sessions">0</div>
+        <div class="stat-label">Today</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="section-title"><span>🚀</span> Start New Session</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Subject / Class</label>
+          <input class="form-input" id="subject-input" type="text" placeholder="e.g., Maths — Class 10A" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Teacher Name</label>
+          <input class="form-input" id="teacher-input" type="text" placeholder="e.g., Mr. Kumar" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Date</label>
+          <input class="form-input" id="date-input" type="date" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Period / Time</label>
+          <input class="form-input" id="period-input" type="text" placeholder="e.g., Period 2" />
+        </div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="startSession()">📷 Start Scanning Attendance</button>
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px"><span>🕐</span> Recent Sessions</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-outline btn-sm" onclick="loadSessions()" title="Refresh from Sheets">🔄</button>
+          <button class="btn btn-outline btn-sm" onclick="clearHistory()" id="clear-history-btn" style="display:none">Clear</button>
+        </div>
+      </div>
+      <div class="history-list" id="history-list">
+        <div class="empty-state"><div class="empty-icon">📭</div><div>No sessions yet</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SCANNER VIEW ════════════════════════════════ -->
+  <div class="view" id="view-scanner">
+    <div class="scanner-header">
+      <button class="btn btn-outline btn-sm" onclick="confirmEndSession()">← Back</button>
+      <div class="scanner-session-info">
+        <div class="scanner-session-name" id="scanner-session-name">Session</div>
+        <div class="scanner-session-meta" id="scanner-session-meta"></div>
+      </div>
+      <div class="sync-badge sync-offline" id="sync-badge">💾 Local</div>
+      <button class="btn btn-danger btn-sm" onclick="confirmEndSession()">End</button>
+    </div>
+
+    <div class="stats-row" style="margin-bottom:14px">
+      <div class="stat-card"><div class="stat-number" id="scan-count">0</div><div class="stat-label">Scanned</div></div>
+      <div class="stat-card"><div class="stat-number" id="scan-dup">0</div><div class="stat-label">Duplicates</div></div>
+      <div class="stat-card"><div class="stat-number" id="scan-time">--:--</div><div class="stat-label">Time</div></div>
+    </div>
+
+    <div class="scanner-layout">
+      <div>
+        <div class="scanner-box">
+          <div class="scanner-box-header">
+            <span class="scanner-box-title">📷 Camera</span>
+            <div class="scanner-status scanning"><div class="pulse-dot"></div> Scanning</div>
+          </div>
+          <div style="position:relative">
+            <div id="qr-reader"></div>
+            <div class="scan-overlay"><div class="scan-line"></div></div>
+          </div>
+        </div>
+        <div class="last-scan-card" id="last-scan-card">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div><div class="last-scan-name" id="ls-name">—</div><div class="last-scan-meta" id="ls-meta">—</div></div>
+            <div class="house-badge" id="ls-house-badge">—</div>
+          </div>
+          <div class="last-scan-status" id="ls-status">✅ Marked</div>
+        </div>
+      </div>
+
+      <div class="attendance-panel">
+        <div class="attendance-panel-header">
+          <span class="scanner-box-title">✅ Attendance</span>
+          <span class="att-count-badge" id="att-count-badge">0</span>
+        </div>
+        <div class="attendance-list" id="attendance-list">
+          <div class="empty-state" id="att-empty" style="padding:16px">
+            <div class="empty-icon">👆</div>
+            <div style="font-size:12px">Scan a QR card to begin</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="scanner-actions">
+      <button class="btn btn-success" onclick="viewReport()" style="flex:1">📊 Report</button>
+      <button class="btn btn-danger" onclick="confirmEndSession()" style="flex:1">🏁 End Session</button>
+    </div>
+  </div>
+
+  <!-- ══ REPORT VIEW ══════════════════════════════════ -->
+  <div class="view" id="view-report">
+    <div style="margin-bottom:14px">
+      <button class="btn btn-outline btn-sm" onclick="goHome()">← Home</button>
+    </div>
+    <div class="report-header">
+      <div class="report-title" id="report-title">Session Report</div>
+      <div class="report-meta" id="report-meta"></div>
+      <div class="report-stats">
+        <div class="report-stat"><div class="report-stat-num accent" id="rep-total">0</div><div class="report-stat-label">Present</div></div>
+        <div class="report-stat"><div class="report-stat-num green" id="rep-houses">0</div><div class="report-stat-label">Houses</div></div>
+        <div class="report-stat"><div class="report-stat-num" id="rep-duration" style="color:var(--yellow)">0m</div><div class="report-stat-label">Duration</div></div>
+      </div>
+    </div>
+    <div class="report-table-wrap">
+      <table class="report-table">
+        <thead><tr><th>#</th><th>Name</th><th>College</th><th>House</th><th>Scanned At</th></tr></thead>
+        <tbody id="report-tbody"></tbody>
+      </table>
+    </div>
+    <div class="report-actions">
+      <button class="btn btn-outline" onclick="goHome()">🏠 Home</button>
+      <button class="btn btn-primary" onclick="exportCSV()">📥 CSV</button>
+      <button class="btn btn-success" onclick="exportText()">📋 Copy</button>
+    </div>
+  </div>
+
+  <!-- ══ QR GENERATOR VIEW ═══════════════════════════ -->
+  <div class="view" id="view-qrgen">
+    <div style="margin-bottom:18px">
+      <div style="font-family:'Outfit',sans-serif;font-size:22px;font-weight:800;color:var(--text)">🖨️ Bulk QR Card Generator</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:3px">Generate print-ready QR cards for all students</div>
+    </div>
+
+    <div class="qrgen-layout">
+      <div class="input-panel">
+        <div class="info-box">
+          <strong style="color:var(--accent3)">📌 Format (one per line)</strong><br>
+          <code>Name|College|House</code><br>
+          e.g. <code>John Doe|ABC College|Red House</code>
+        </div>
+
+        <div class="card" style="padding:16px">
+          <div class="section-title" style="font-size:14px;margin-bottom:10px"><span>📋</span> Paste Bulk Data</div>
+          <textarea class="form-textarea" id="bulk-input" placeholder="John Doe|ABC College|Red House&#10;Jane Smith|XYZ College|Blue House" style="font-family:'Courier New',monospace;font-size:11px;min-height:90px"></textarea>
+          <button class="btn btn-primary btn-full btn-sm" onclick="parseBulkInput()" style="margin-top:8px">➕ Add Students</button>
+        </div>
+
+        <div class="card" style="padding:16px">
+          <div class="section-title" style="font-size:14px;margin-bottom:10px"><span>✏️</span> Add Manually</div>
+          <div class="form-group" style="margin-bottom:7px">
+            <label class="form-label">Name</label>
+            <input class="form-input" id="manual-name" type="text" placeholder="Full Name" />
+          </div>
+          <div class="form-row" style="margin-bottom:7px">
+            <div class="form-group" style="margin-bottom:0"><label class="form-label">College</label><input class="form-input" id="manual-college" type="text" placeholder="College" /></div>
+            <div class="form-group" style="margin-bottom:0"><label class="form-label">House</label><input class="form-input" id="manual-house" type="text" placeholder="House" /></div>
+          </div>
+          <button class="btn btn-success btn-full btn-sm" onclick="addManualStudent()">➕ Add</button>
+        </div>
+
+        <div class="card" style="padding:16px">
+          <div class="section-title" style="font-size:14px;margin-bottom:8px;justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:7px"><span>👥</span> Students <span class="att-count-badge" id="student-count-badge">0</span></div>
+            <button class="btn btn-outline btn-sm" style="font-size:10px;padding:3px 8px" onclick="clearStudents()">Clear</button>
+          </div>
+          <div class="student-tag-list" id="student-tag-list">
+            <div style="color:var(--text3);font-size:11px;padding:3px">No students yet</div>
+          </div>
+        </div>
+
+        <div class="card" style="padding:16px">
+          <div class="section-title" style="font-size:14px;margin-bottom:12px"><span>⚙️</span> Print Settings</div>
+          <div class="qr-settings">
+            <div class="setting-row">
+              <span class="setting-label">Cards per row</span>
+              <div class="setting-control">
+                <button class="size-btn" onclick="setColumns(2)" id="col-btn-2">2</button>
+                <button class="size-btn active" onclick="setColumns(3)" id="col-btn-3">3</button>
+                <button class="size-btn" onclick="setColumns(4)" id="col-btn-4">4</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">QR Size</span>
+              <div class="setting-control">
+                <button class="size-btn" onclick="setQRSize('sm')" id="qs-sm">Small</button>
+                <button class="size-btn active" onclick="setQRSize('md')" id="qs-md">Medium</button>
+                <button class="size-btn" onclick="setQRSize('lg')" id="qs-lg">Large</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Serial numbers</span>
+              <div class="setting-control">
+                <button class="size-btn active" onclick="toggleSerial(true)" id="ser-on">Yes</button>
+                <button class="size-btn" onclick="toggleSerial(false)" id="ser-off">No</button>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Page Header</label>
+              <input class="form-input" id="print-header" type="text" placeholder="e.g., ABC College — QR ID Cards" style="font-size:12px" />
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-warning btn-full" style="font-size:14px;padding:14px" onclick="generateAndPrint()" id="generate-btn" disabled>
+          🖨️ Generate &amp; Print Cards
+        </button>
+      </div>
+
+      <div class="preview-panel">
+        <div class="preview-header">
+          <div class="preview-header-title">👁️ Preview <span style="font-size:10px;color:var(--text3);font-weight:400" id="preview-count-label">0 cards</span></div>
+          <button class="btn btn-outline btn-sm" onclick="refreshPreview()">🔄</button>
+        </div>
+        <div class="qr-preview-grid cols-3" id="qr-preview-grid">
+          <div class="qr-empty-preview">
+            <div style="font-size:40px">🖨️</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text2)">No students added</div>
+            <div style="font-size:11px">Add students to preview cards</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- PRINT AREA -->
+<div id="print-area"></div>
+
+<!-- ══ SETTINGS MODAL ══════════════════════════════ -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <div class="modal-title">⚙️ Settings</div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">☁️ Google Sheets (Backend)</div>
+      <div class="form-group">
+        <label class="form-label">Apps Script Web App URL</label>
+        <input class="form-input" id="gas-url-input" type="url" placeholder="https://script.google.com/macros/s/AKfycbwS0nX9PBNaU6_L2mDDVUFyahQvO4YZ40OWkRwwJPg3DhDSuNvhbGMLZ8n_XIT5Y-Xolw/exec" />
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">
+        Paste your deployed GAS Web App URL here. Leave blank to use local storage only.
+      </div>
+      <button class="btn btn-outline btn-sm btn-full" onclick="testGASConnection()">🔌 Test Connection</button>
+      <div id="gas-test-result" style="margin-top:8px;font-size:11px;display:none"></div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">🏫 School Info</div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">School / College Name</label>
+        <input class="form-input" id="school-name-input" type="text" placeholder="e.g., ABC Engineering College" />
+      </div>
+    </div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📱 App Info</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7">
+        <div>Version: <strong>2.0.0</strong></div>
+        <div>Mode: <strong id="pwa-mode-label">Browser</strong></div>
+        <div>Storage: <strong id="storage-mode-label">Local</strong></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('settings-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ END SESSION MODAL ═══════════════════════════ -->
+<div class="modal-overlay" id="end-modal">
+  <div class="modal">
+    <div class="modal-title">🏁 End Session?</div>
+    <p style="color:var(--text2);font-size:13px">This will stop scanning and save the attendance record.</p>
+    <div id="end-modal-summary" style="margin-top:14px;padding:12px;background:var(--card);border:1px solid var(--card-border);border-radius:var(--radius-sm);font-size:12px;color:var(--text2)"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('end-modal')">Cancel</button>
+      <button class="btn btn-danger" onclick="endSession()">End &amp; Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let currentSession   = null;
+let attendanceList   = [];
+let duplicateCount   = 0;
+let html5QrCode      = null;
+let scanCooldown     = false;
+let clockInterval    = null;
+let sessions         = JSON.parse(localStorage.getItem('attendx-sessions') || '[]');
+let gasUrl           = localStorage.getItem('attendx-gas-url') || '';
+let schoolName       = localStorage.getItem('attendx-school') || '';
+let gasConnected     = false;
+let deferredInstall  = null;
+
+// QR Gen state
+let qrStudents = [];
+let qrColumns  = 3;
+let qrSizePx   = 140;
+let showSerial = true;
+
+// ═══════════════════════════════════════════════════════════
+//  HOUSE UTILS
+// ═══════════════════════════════════════════════════════════
+const HOUSE_MAP = { red:'red',crimson:'red',scarlet:'red',blue:'blue',navy:'blue',cobalt:'blue',green:'green',emerald:'green',jade:'green',yellow:'yellow',gold:'yellow',amber:'yellow',purple:'purple',violet:'purple',indigo:'purple',orange:'orange',saffron:'orange' };
+const PRINT_HOUSE_BG = { red:'#dc2626',blue:'#2563eb',green:'#16a34a',yellow:'#ca8a04',purple:'#9333ea',orange:'#ea580c',default:'#475569' };
+const PRINT_HOUSE_FG = { yellow:'#000' };
+
+function getHouseClass(house) {
+  if (!house) return 'default';
+  const l = house.toLowerCase();
+  for (const [k,v] of Object.entries(HOUSE_MAP)) if (l.includes(k)) return v;
+  return 'default';
+}
+function getInitials(name) { return name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+function formatTime(d)  { return new Date(d).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+function formatDate(d)  { return new Date(d).toLocaleDateString('en-IN',{weekday:'short',year:'numeric',month:'short',day:'numeric'}); }
+function todayStr()     { return new Date().toISOString().split('T')[0]; }
+
+// ═══════════════════════════════════════════════════════════
+//  GAS API (GET-only, no CORS preflight issues)
+// ═══════════════════════════════════════════════════════════
+async function gasCall(params) {
+  if (!gasUrl) return { error: 'No GAS URL configured' };
+  try {
+    const url  = new URL(gasUrl);
+    Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+    const res  = await fetch(url.toString(), { redirect: 'follow' });
+    const data = await res.json();
+    return data;
+  } catch (e) {
+    return { error: e.message, offline: !navigator.onLine };
+  }
+}
+
+async function checkGASConnection() {
+  if (!gasUrl) { updateGASStatus(false); return; }
+  updateGASStatus('checking');
+  const res = await gasCall({ action: 'ping' });
+  gasConnected = res.ok === true;
+  updateGASStatus(gasConnected);
+}
+
+function updateGASStatus(state) {
+  const dot   = document.getElementById('gas-dot');
+  const label = document.getElementById('gas-label');
+  const short = document.getElementById('gas-url-short');
+
+  if (state === 'checking') {
+    dot.className = 'gas-dot checking';
+    label.textContent = 'Checking connection…';
+  } else if (state === true) {
+    dot.className = 'gas-dot connected';
+    label.textContent = 'Google Sheets: Connected ✓';
+    if (gasUrl) {
+      const u = new URL(gasUrl);
+      short.textContent = u.hostname + '…';
+    }
+    document.getElementById('storage-mode-label').textContent = 'Google Sheets + Local';
+  } else {
+    dot.className = 'gas-dot disconnected';
+    label.textContent = gasUrl ? 'Google Sheets: Connection failed' : 'Google Sheets: Not configured';
+    short.textContent = '';
+    document.getElementById('storage-mode-label').textContent = 'Local only';
+  }
+}
+
+async function testGASConnection() {
+  const url = document.getElementById('gas-url-input').value.trim();
+  if (!url) { showToast('⚠️','Enter a URL first','warn'); return; }
+
+  const resultEl = document.getElementById('gas-test-result');
+  resultEl.style.display = 'block';
+  resultEl.textContent = '⏳ Testing…';
+  resultEl.style.color = 'var(--text2)';
+
+  const tempUrl = gasUrl;
+  gasUrl = url;
+  const res = await gasCall({ action: 'ping' });
+  gasUrl = tempUrl;
+
+  if (res.ok) {
+    resultEl.textContent = '✅ Connected! GAS is responding correctly.';
+    resultEl.style.color = 'var(--green)';
+  } else {
+    resultEl.textContent = '❌ Failed: ' + (res.error || 'No response');
+    resultEl.style.color = 'var(--red)';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab) {
+  ['home','qrgen'].forEach(t => document.getElementById('tab-'+t)?.classList.remove('active'));
+  document.getElementById('tab-'+tab)?.classList.add('active');
+  if (tab==='home') goHome();
+  else if (tab==='qrgen') { document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); document.getElementById('view-qrgen').classList.add('active'); }
+}
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  window.scrollTo(0,0);
+}
+function goHome() {
+  showView('home'); updateHomeStats(); renderHistory();
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-home')?.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SESSION MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+async function startSession() {
+  const subject = document.getElementById('subject-input').value.trim();
+  const teacher = document.getElementById('teacher-input').value.trim();
+  const date    = document.getElementById('date-input').value;
+  const period  = document.getElementById('period-input').value.trim();
+  if (!subject) { showToast('⚠️','Please enter a subject','warn'); return; }
+
+  const sessionData = { id: 'S_'+Date.now(), subject, teacher, date: date||todayStr(), period, startTime: Date.now(), endTime: null };
+  currentSession = sessionData;
+  attendanceList = [];
+  duplicateCount = 0;
+
+  // Try GAS
+  if (gasConnected) {
+    const res = await gasCall({ action:'createSession', subject, teacher, date:sessionData.date, period });
+    if (res.ok && res.sessionId) {
+      currentSession.id = res.sessionId;
+      updateSyncBadge('cloud');
+    } else {
+      updateSyncBadge('local');
+    }
+  } else { updateSyncBadge('local'); }
+
+  document.getElementById('scanner-session-name').textContent = subject;
+  document.getElementById('scanner-session-meta').textContent = `${teacher?teacher+' • ':''}${sessionData.date}${period?' • '+period:''}`;
+  document.getElementById('active-session-badge').classList.add('active');
+  document.getElementById('badge-text').textContent = subject;
+
+  showView('scanner'); updateScanUI(); startClock(); initScanner();
+}
+
+function confirmEndSession() {
+  const modal = document.getElementById('end-modal');
+  document.getElementById('end-modal-summary').innerHTML = `
+    <strong style="color:var(--text)">${currentSession?.subject||'Session'}</strong><br>
+    Marked: <strong style="color:var(--green)">${attendanceList.length}</strong> &nbsp;
+    Duplicates blocked: <strong style="color:var(--yellow)">${duplicateCount}</strong>`;
+  modal.classList.add('open');
+}
+
+async function endSession() {
+  closeModal('end-modal');
+  stopScanner(); stopClock();
+
+  if (currentSession) {
+    currentSession.endTime = Date.now();
+    const rec = { ...currentSession, attendance: [...attendanceList], duplicates: duplicateCount, source: gasConnected?'cloud':'local' };
+    sessions.unshift(rec);
+    localStorage.setItem('attendx-sessions', JSON.stringify(sessions));
+
+    if (gasConnected) {
+      await gasCall({ action:'endSession', sessionId: currentSession.id });
+      showToast('☁️','Saved to Google Sheets!','success');
+    } else {
+      showToast('💾',`Saved locally — ${attendanceList.length} students`,'success');
+    }
+  }
+
+  document.getElementById('active-session-badge').classList.remove('active');
+  viewReport(true);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SCANNER
+// ═══════════════════════════════════════════════════════════
+function initScanner() {
+  if (html5QrCode) { html5QrCode.clear().catch(()=>{}).finally(()=>{ html5QrCode=null; startScanner(); }); }
+  else startScanner();
+}
+
+function startScanner() {
+  html5QrCode = new Html5Qrcode("qr-reader");
+  const config = { fps:15, qrbox:{width:180,height:180}, aspectRatio:1.0 };
+  html5QrCode.start({facingMode:"environment"},config,onQRScan,()=>{}).catch(()=>{
+    html5QrCode.start({facingMode:"user"},config,onQRScan,()=>{}).catch(()=>showToast('❌','Camera not available','error'));
+  });
+}
+
+function stopScanner() {
+  if (html5QrCode) { html5QrCode.stop().catch(()=>{}); html5QrCode=null; }
+}
+
+async function onQRScan(text) {
+  if (scanCooldown) return;
+  const parts  = text.split('|');
+  const name   = (parts[0]||'').trim();
+  const college= (parts[1]||'').trim();
+  const house  = (parts[2]||'').trim();
+
+  if (!name) { showLastScan(null,null,null,'error','❌ Invalid QR'); return; }
+
+  const dup = attendanceList.find(s=>s.name.toLowerCase()===name.toLowerCase());
+  if (dup) {
+    duplicateCount++;
+    document.getElementById('scan-dup').textContent = duplicateCount;
+    showLastScan(name,college,house,'duplicate',`⚠️ Already marked at ${formatTime(dup.time)}`);
+    playScanSound('dup'); triggerCooldown(2000); return;
+  }
+
+  const record = { name, college, house, time: Date.now() };
+  attendanceList.unshift(record);
+  updateScanUI(); addAttendanceItem(record);
+  showLastScan(name,college,house,'ok','✅ Attendance Marked!');
+  playScanSound('ok'); showToast('✅',name,'success');
+  triggerCooldown(1500);
+
+  // Sync to GAS
+  if (gasConnected) {
+    const res = await gasCall({ action:'markAttendance', sessionId:currentSession.id, subject:currentSession.subject, name, college, house });
+    updateSyncBadge(res.ok ? 'cloud' : 'local');
+  }
+}
+
+function triggerCooldown(ms) { scanCooldown=true; setTimeout(()=>scanCooldown=false, ms); }
+
+function showLastScan(name,college,house,type,status) {
+  const card = document.getElementById('last-scan-card');
+  card.className = 'last-scan-card show '+type;
+  document.getElementById('ls-name').textContent   = name||'Unknown';
+  document.getElementById('ls-meta').textContent   = college||'—';
+  const hb = document.getElementById('ls-house-badge');
+  hb.textContent = house||'—'; hb.className = 'house-badge house-'+getHouseClass(house);
+  const st = document.getElementById('ls-status');
+  st.textContent = status;
+  st.className = 'last-scan-status '+(type==='ok'?'ok':type==='duplicate'?'dup':'err');
+}
+
+function addAttendanceItem(record) {
+  const list = document.getElementById('attendance-list');
+  document.getElementById('att-empty')?.remove();
+  const hc = getHouseClass(record.house);
+  const div = document.createElement('div');
+  div.className = 'attendance-item';
+  div.innerHTML = `
+    <div class="att-avatar avatar-${hc}">${getInitials(record.name)}</div>
+    <div class="att-info"><div class="att-name">${record.name}</div><div class="att-sub">${record.college||'—'}</div></div>
+    <span class="house-badge house-${hc}">${record.house||'—'}</span>
+    <div class="att-time">${formatTime(record.time)}</div>`;
+  list.insertBefore(div, list.firstChild);
+}
+
+function updateScanUI() {
+  document.getElementById('scan-count').textContent = attendanceList.length;
+  document.getElementById('att-count-badge').textContent = attendanceList.length;
+}
+
+function updateSyncBadge(mode) {
+  const b = document.getElementById('sync-badge');
+  b.className = 'sync-badge '+(mode==='cloud'?'sync-ok':mode==='pending'?'sync-pending':'sync-offline');
+  b.textContent = mode==='cloud'?'☁️ Synced':mode==='pending'?'⏳ Syncing…':'💾 Local';
+}
+
+function startClock() {
+  clockInterval = setInterval(()=>{ document.getElementById('scan-time').textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); }, 1000);
+}
+function stopClock() { clearInterval(clockInterval); }
+
+function playScanSound(type) {
+  try {
+    const ctx = new(window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = type==='ok'?880:440; osc.type='sine';
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime+0.15);
+  } catch(e){}
+}
+
+// ═══════════════════════════════════════════════════════════
+//  REPORT
+// ═══════════════════════════════════════════════════════════
+function viewReport(fromEnd=false) {
+  const session = fromEnd ? sessions[0] : currentSession;
+  const list    = fromEnd ? sessions[0]?.attendance : attendanceList;
+  if (!session||!list) { goHome(); return; }
+
+  document.getElementById('report-title').textContent = session.subject;
+  document.getElementById('report-meta').textContent  = `${session.teacher?session.teacher+' • ':''}${session.date}${session.period?' • '+session.period:''}`;
+  document.getElementById('rep-total').textContent    = list.length;
+  document.getElementById('rep-houses').textContent   = new Set(list.map(s=>s.house).filter(Boolean)).size;
+  const dur = session.endTime ? Math.round((session.endTime-session.startTime)/60000) : Math.round((Date.now()-session.startTime)/60000);
+  document.getElementById('rep-duration').textContent = dur+'m';
+
+  const tbody = document.getElementById('report-tbody');
+  tbody.innerHTML = '';
+  list.forEach((s,i) => {
+    const hc = getHouseClass(s.house);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--text3)">${i+1}</td><td><strong>${s.name}</strong></td><td style="color:var(--text2)">${s.college||'—'}</td><td><span class="house-badge house-${hc}">${s.house||'—'}</span></td><td style="color:var(--text3)">${formatTime(s.time)}</td>`;
+    tbody.appendChild(tr);
+  });
+  showView('report');
+}
+
+function exportCSV() {
+  const session = sessions[0]||currentSession;
+  const list    = session?.attendance||attendanceList;
+  if (!list.length) { showToast('⚠️','No data to export','warn'); return; }
+  let csv = `Subject,${session?.subject||''}\nDate,${session?.date||''}\nTeacher,${session?.teacher||''}\n\n#,Name,College,House,Time\n`;
+  list.forEach((s,i) => csv += `${i+1},"${s.name}","${s.college||''}","${s.house||''}","${formatTime(s.time)}"\n`);
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv],{type:'text/csv'})), download: `attendance_${session?.subject?.replace(/\s+/g,'_')||'session'}_${session?.date||todayStr()}.csv` });
+  a.click(); showToast('📥','CSV downloaded!','success');
+}
+
+function exportText() {
+  const session = sessions[0]||currentSession;
+  const list    = session?.attendance||attendanceList;
+  if (!list.length) { showToast('⚠️','No data','warn'); return; }
+  let t = `ATTENDANCE — ${session?.subject||''}\nDate: ${session?.date||''}\n────────────────────\n`;
+  list.forEach((s,i) => t += `${i+1}. ${s.name} | ${s.college||'—'} | ${s.house||'—'}\n`);
+  t += `────────────────────\nTotal: ${list.length}`;
+  navigator.clipboard.writeText(t).then(()=>showToast('📋','Copied!','success')).catch(()=>showToast('❌','Copy failed','error'));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  HOME
+// ═══════════════════════════════════════════════════════════
+function updateHomeStats() {
+  const today = todayStr();
+  document.getElementById('stat-total-sessions').textContent = sessions.length;
+  document.getElementById('stat-total-scans').textContent    = sessions.reduce((a,s)=>a+(s.attendance?.length||0),0);
+  document.getElementById('stat-today-sessions').textContent = sessions.filter(s=>s.date===today).length;
+}
+
+async function loadSessions() {
+  if (!gasConnected) { showToast('⚠️','Not connected to Google Sheets','warn'); return; }
+  showToast('⏳','Loading from Sheets…','success');
+  const res = await gasCall({ action: 'getSessions' });
+  if (res.sessions) {
+    // Merge cloud sessions into local
+    const cloudIds = new Set(res.sessions.map(s=>s.id));
+    const localOnly = sessions.filter(s=>!cloudIds.has(s.id));
+    sessions = [...res.sessions.map(s=>({ ...s, source:'cloud', attendance:[] })), ...localOnly];
+    localStorage.setItem('attendx-sessions', JSON.stringify(sessions));
+    updateHomeStats(); renderHistory();
+    showToast('☁️',`Loaded ${res.sessions.length} sessions`,'success');
+  }
+}
+
+function renderHistory() {
+  const list     = document.getElementById('history-list');
+  const clearBtn = document.getElementById('clear-history-btn');
+  if (!sessions.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div>No sessions yet</div></div>';
+    clearBtn.style.display='none'; return;
+  }
+  clearBtn.style.display='inline-flex';
+  list.innerHTML = sessions.slice(0,12).map((s,i) => `
+    <div class="history-item" onclick="viewHistorySession(${i})">
+      <div><div class="history-subject">${s.subject}</div><div class="history-meta">${s.teacher?s.teacher+' • ':''}${s.date}${s.period?' • '+s.period:''}</div></div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span class="history-count">${s.attendance?.length||s.attendCount||0}</span>
+        <span class="history-source ${s.source==='cloud'?'hs-cloud':'hs-local'}">${s.source==='cloud'?'☁️':'💾'}</span>
+      </div>
+    </div>`).join('');
+}
+
+async function viewHistorySession(i) {
+  let session = sessions[i];
+  if (!session) return;
+
+  // Load attendance from GAS if cloud session and local attendance is empty
+  if (session.source==='cloud' && (!session.attendance||!session.attendance.length) && gasConnected) {
+    const res = await gasCall({ action:'getAttendance', sessionId: session.id });
+    if (res.attendance) { session.attendance = res.attendance; sessions[i]=session; }
+  }
+
+  document.getElementById('report-title').textContent = session.subject;
+  document.getElementById('report-meta').textContent  = `${session.teacher?session.teacher+' • ':''}${session.date}${session.period?' • '+session.period:''}`;
+  document.getElementById('rep-total').textContent    = session.attendance?.length||0;
+  document.getElementById('rep-houses').textContent   = new Set((session.attendance||[]).map(s=>s.house).filter(Boolean)).size;
+  const dur = session.endTime?Math.round((session.endTime-session.startTime)/60000):'—';
+  document.getElementById('rep-duration').textContent = dur+'m';
+
+  const tbody = document.getElementById('report-tbody'); tbody.innerHTML='';
+  (session.attendance||[]).forEach((s,i2) => {
+    const hc=getHouseClass(s.house); const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="color:var(--text3)">${i2+1}</td><td><strong>${s.name}</strong></td><td style="color:var(--text2)">${s.college||'—'}</td><td><span class="house-badge house-${hc}">${s.house||'—'}</span></td><td style="color:var(--text3)">${formatTime(s.time)}</td>`;
+    tbody.appendChild(tr);
+  });
+  showView('report');
+}
+
+function clearHistory() {
+  if (!confirm('Clear local session history?')) return;
+  sessions=[]; localStorage.removeItem('attendx-sessions');
+  updateHomeStats(); renderHistory(); showToast('🗑️','Cleared','success');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  QR GENERATOR
+// ═══════════════════════════════════════════════════════════
+function parseBulkInput() {
+  const raw = document.getElementById('bulk-input').value.trim();
+  if (!raw) { showToast('⚠️','Paste data first','warn'); return; }
+  let added=0,skipped=0;
+  raw.split('\n').map(l=>l.trim()).filter(l=>l).forEach(line => {
+    const [name='',college='',house=''] = line.split('|').map(p=>p.trim());
+    if (!name||qrStudents.find(s=>s.name.toLowerCase()===name.toLowerCase())) { skipped++; return; }
+    qrStudents.push({name,college,house}); added++;
+  });
+  document.getElementById('bulk-input').value='';
+  updateStudentTagList(); refreshPreview();
+  showToast('✅',`Added ${added}${skipped?', '+skipped+' skipped':''}`,added?'success':'warn');
+}
+
+function addManualStudent() {
+  const name    = document.getElementById('manual-name').value.trim();
+  const college = document.getElementById('manual-college').value.trim();
+  const house   = document.getElementById('manual-house').value.trim();
+  if (!name) { showToast('⚠️','Enter student name','warn'); return; }
+  if (qrStudents.find(s=>s.name.toLowerCase()===name.toLowerCase())) { showToast('⚠️','Already added','warn'); return; }
+  qrStudents.push({name,college,house});
+  document.getElementById('manual-name').value='';
+  updateStudentTagList(); refreshPreview();
+  showToast('✅',`${name} added`,'success');
+}
+
+function removeStudent(i) { qrStudents.splice(i,1); updateStudentTagList(); refreshPreview(); }
+function clearStudents() { if(!qrStudents.length)return; if(!confirm('Remove all?'))return; qrStudents=[]; updateStudentTagList(); refreshPreview(); }
+
+function updateStudentTagList() {
+  const c = document.getElementById('student-tag-list');
+  document.getElementById('student-count-badge').textContent = qrStudents.length;
+  document.getElementById('generate-btn').disabled = !qrStudents.length;
+  c.innerHTML = qrStudents.length
+    ? qrStudents.map((s,i)=>`<div class="student-tag">${s.name}<button onclick="removeStudent(${i})">✕</button></div>`).join('')
+    : '<div style="color:var(--text3);font-size:11px;padding:3px">No students yet</div>';
+}
+
+function setColumns(n) {
+  qrColumns=n;
+  [2,3,4].forEach(c=>document.getElementById('col-btn-'+c)?.classList.toggle('active',c===n));
+  document.getElementById('qr-preview-grid').className=`qr-preview-grid cols-${n}`;
+}
+
+function setQRSize(s) {
+  const map={sm:90,md:140,lg:180}; qrSizePx=map[s];
+  ['sm','md','lg'].forEach(x=>document.getElementById('qs-'+x)?.classList.toggle('active',x===s));
+  refreshPreview();
+}
+
+function toggleSerial(v) {
+  showSerial=v;
+  document.getElementById('ser-on').classList.toggle('active',v);
+  document.getElementById('ser-off').classList.toggle('active',!v);
+}
+
+function refreshPreview() {
+  const grid = document.getElementById('qr-preview-grid');
+  grid.className = `qr-preview-grid cols-${qrColumns}`;
+  document.getElementById('preview-count-label').textContent = `${qrStudents.length} card${qrStudents.length!==1?'s':''}`;
+  if (!qrStudents.length) {
+    grid.innerHTML='<div class="qr-empty-preview"><div style="font-size:40px">🖨️</div><div style="font-size:13px;font-weight:600;color:var(--text2)">No students added</div><div style="font-size:11px">Add students to preview</div></div>';
+    return;
+  }
+  grid.innerHTML='';
+  qrStudents.forEach((s,i) => {
+    const hc=getHouseClass(s.house);
+    const card=document.createElement('div'); card.className='qr-screen-card';
+    card.innerHTML=`<button class="delete-card-btn" onclick="removeStudent(${i})">✕</button><div class="qr-canvas-wrap" id="pqr-${i}"></div><div class="card-name">${s.name}</div><div class="card-college">${s.college||'—'}</div><span class="card-house house-${hc}">${s.house||'—'}</span>`;
+    grid.appendChild(card);
+    requestAnimationFrame(()=>{
+      const w=document.getElementById(`pqr-${i}`); if(!w)return; w.innerHTML='';
+      try { new QRCode(w,{text:`${s.name}|${s.college}|${s.house}`,width:qrSizePx,height:qrSizePx,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.H}); } catch(e){}
+    });
+  });
+}
+
+function generateAndPrint() {
+  if (!qrStudents.length) { showToast('⚠️','No students','warn'); return; }
+  const area   = document.getElementById('print-area');
+  const header = document.getElementById('print-header').value.trim() || schoolName || 'Student QR ID Cards';
+  const date   = new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+  const cppMap = {2:8,3:12,4:16};
+  const cpp    = cppMap[qrColumns]||12;
+  const pqrpx  = qrColumns===2?160:qrColumns===3?120:90;
+  const pages  = Math.ceil(qrStudents.length/cpp);
+
+  area.innerHTML='';
+  for (let p=0; p<pages; p++) {
+    const pageEl=document.createElement('div'); pageEl.className='print-page';
+    pageEl.innerHTML=`<div class="print-page-header"><h2>${header}</h2><p>Generated ${date} | Page ${p+1}/${pages} | ${qrStudents.length} cards</p></div>`;
+    const grid=document.createElement('div'); grid.className=`print-grid cols-${qrColumns}`;
+    const slice=qrStudents.slice(p*cpp,p*cpp+cpp);
+    slice.forEach((s,ii) => {
+      const idx=p*cpp+ii, hc=getHouseClass(s.house), hbg=PRINT_HOUSE_BG[hc]||PRINT_HOUSE_BG.default, hfg=PRINT_HOUSE_FG[hc]||'#fff';
+      const card=document.createElement('div'); card.className='print-card';
+      if (showSerial) { const ser=document.createElement('div'); ser.className='print-card-serial'; ser.textContent='#'+String(idx+1).padStart(3,'0'); card.appendChild(ser); }
+      const qw=document.createElement('div'); qw.className='print-card-qr'; qw.id='printqr-'+idx; card.appendChild(qw);
+      const nm=document.createElement('div'); nm.className='print-card-name'; nm.textContent=s.name; card.appendChild(nm);
+      if(s.college){const cl=document.createElement('div');cl.className='print-card-college';cl.textContent=s.college;card.appendChild(cl);}
+      if(s.house){const hs=document.createElement('div');hs.className='print-card-house';hs.style.background=hbg;hs.style.color=hfg;hs.textContent=s.house;card.appendChild(hs);}
+      grid.appendChild(card);
+    });
+    pageEl.appendChild(grid); area.appendChild(pageEl);
+    // Generate QRs
+    slice.forEach((_,ii)=>{
+      const idx=p*cpp+ii, s=qrStudents[idx], w=document.getElementById('printqr-'+idx);
+      if(!w)return;
+      try{new QRCode(w,{text:`${s.name}|${s.college}|${s.house}`,width:pqrpx,height:pqrpx,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.H});}catch(e){}
+    });
+  }
+  setTimeout(()=>{ window.print(); showToast('🖨️','Print dialog opened!','success'); }, 700);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SETTINGS
+// ═══════════════════════════════════════════════════════════
+function openSettings() {
+  document.getElementById('gas-url-input').value  = gasUrl;
+  document.getElementById('school-name-input').value = schoolName;
+  document.getElementById('pwa-mode-label').textContent = window.matchMedia('(display-mode: standalone)').matches ? 'Installed (PWA)' : 'Browser';
+  document.getElementById('gas-test-result').style.display='none';
+  document.getElementById('settings-modal').classList.add('open');
+}
+
+async function saveSettings() {
+  gasUrl     = document.getElementById('gas-url-input').value.trim();
+  schoolName = document.getElementById('school-name-input').value.trim();
+  localStorage.setItem('attendx-gas-url', gasUrl);
+  localStorage.setItem('attendx-school',  schoolName);
+  closeModal('settings-modal');
+  showToast('💾','Settings saved','success');
+  await checkGASConnection();
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ═══════════════════════════════════════════════════════════
+//  PWA
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); deferredInstall = e;
+  document.getElementById('install-banner').classList.add('visible');
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-banner').classList.remove('visible');
+  deferredInstall=null; showToast('📲','AttendX installed!','success');
+});
+
+function installPWA() {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  deferredInstall.userChoice.then(r=>{ if(r.outcome==='accepted') showToast('🎉','Installing…','success'); deferredInstall=null; });
+}
+
+function dismissInstall() { document.getElementById('install-banner').classList.remove('visible'); }
+
+// ═══════════════════════════════════════════════════════════
+//  ONLINE/OFFLINE
+// ═══════════════════════════════════════════════════════════
+function updateOnlinePill() {
+  const pill = document.getElementById('online-pill');
+  if (navigator.onLine) {
+    pill.className='online-pill online'; pill.innerHTML='<div class="pulse-dot"></div> Online';
+    if (gasUrl) checkGASConnection();
+  } else {
+    pill.className='online-pill offline'; pill.innerHTML='📵 Offline';
+    gasConnected=false; updateGASStatus(false);
+  }
+}
+
+window.addEventListener('online',  updateOnlinePill);
+window.addEventListener('offline', updateOnlinePill);
+
+// ═══════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════
+function showToast(icon, msg, type='success') {
+  const c=document.getElementById('toast-container');
+  const t=document.createElement('div'); t.className='toast';
+  const colors={success:'rgba(34,211,165,0.15)',warn:'rgba(251,191,36,0.15)',error:'rgba(255,107,107,0.15)'};
+  const borders={success:'rgba(34,211,165,0.3)',warn:'rgba(251,191,36,0.3)',error:'rgba(255,107,107,0.3)'};
+  t.style.borderColor=borders[type]||borders.success;
+  t.style.background=colors[type]||colors.success;
+  t.innerHTML=`<span>${icon}</span><span>${msg}</span>`;
+  c.appendChild(t);
+  setTimeout(()=>{ t.classList.add('fade-out'); setTimeout(()=>t.remove(),300); }, 2800);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SERVICE WORKER REGISTRATION
+// ═══════════════════════════════════════════════════════════
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => { console.log('✅ SW registered:', reg.scope); })
+      .catch(err => { console.warn('SW registration failed:', err); });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('date-input').value = todayStr();
+  updateHomeStats();
+  renderHistory();
+  updateOnlinePill();
+  if (gasUrl) await checkGASConnection();
+});
+</script>
+</body>
+</html>
